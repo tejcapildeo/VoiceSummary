@@ -1,4 +1,4 @@
-#Voice Summary
+# Voice Summary
 
 This app helps with meeting summaries by either recording on the spot or accepting an audio file. Then it summarizes and gives the key insights and actionables. Very useful for compiling information, referring to discussions in the past, or sharing the main ideas with someone
 who missed the meeting.

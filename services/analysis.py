@@ -5,7 +5,7 @@ from typing import Any, Dict
 from config import client
 
 
-def analyze_transcript(transcript: str, meeting_type: str) -> Dict[str, Any]:
+def analyze_transcript(transcript: str) -> Dict[str, Any]:
     """
     Sends the transcript to an LLM and returns structured info:
     - summary_short
@@ -15,12 +15,12 @@ def analyze_transcript(transcript: str, meeting_type: str) -> Dict[str, Any]:
     - open_questions
     """
     system_prompt = """
-You are an assistant that analyzes meeting transcripts.
+You are an assistant that analyzes meeting or conversation transcripts.
 
 Given a transcript, you will extract:
 1) A short 2-3 sentence summary.
 2) A detailed bullet-point summary (5-12 bullets).
-3) A list of key decisions made.
+3) A list of key decisions or outcomes.
 4) A list of action items. 
    Each action item should have:
    - description
@@ -46,15 +46,12 @@ Respond ONLY as valid JSON with this structure:
 """
 
     user_prompt = f"""
-Meeting type: {meeting_type}
-
 Transcript:
 \"\"\"{transcript}\"\"\"
 """
 
     response = client.chat.completions.create(
-        # Using 40 mini for now
-        model="gpt-4o-mini",
+        model="gpt-4o-mini",  # or whichever model you prefer
         messages=[
             {"role": "system", "content": system_prompt.strip()},
             {"role": "user", "content": user_prompt.strip()},
@@ -64,11 +61,9 @@ Transcript:
 
     raw_content = response.choices[0].message.content
 
-    # Try to parse JSON; if it fails, wrap into a basic structure
     try:
         data = json.loads(raw_content)
     except json.JSONDecodeError:
-        # Fallback: wrap the raw content in a minimal structure
         data = {
             "summary_short": "Model returned non-JSON output. See detailed summary.",
             "summary_detailed": [raw_content],
@@ -77,7 +72,6 @@ Transcript:
             "open_questions": [],
         }
 
-    # Ensure all keys exist
     data.setdefault("summary_short", "")
     data.setdefault("summary_detailed", [])
     data.setdefault("decisions", [])

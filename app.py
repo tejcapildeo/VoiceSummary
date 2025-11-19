@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 
 import streamlit as st
+from audio_recorder_streamlit import audio_recorder
 
 from services.transcription import transcribe_audio
 from services.analysis import analyze_transcript
@@ -16,37 +17,58 @@ st.set_page_config(
 
 st.title("📝 Meeting Summarizer")
 st.write(
-    "Upload a recording of your meeting or important conversation, and this tool "
-    "will generate a transcript, summary, key decisions, and action items."
+    "Upload a recording of your meeting or important conversation, or record one on the spot, "
+    "and this tool will generate a transcript, summary, key decisions, and action items."
 )
 
-# Sidebar configuration / info
+# Sidebar: instructions
 with st.sidebar:
     st.header("Instructions")
     st.markdown("---")
-    st.markdown("**Instructions:**")
     st.markdown(
-        "1. Upload an audio file (`.mp3`, `.wav`, `.m4a`).\n"
-        "2. Click **Process meeting**.\n"
-        "3. Review the transcript and AI-generated summary."
+        "1. **Record** audio using the recorder *or* **upload** an audio file (`.mp3`, `.wav`, `.m4a`).\n"
+        "2. Click **Process audio**.\n"
+        "3. Review the transcript and AI-generated summary.\n\n"
+        "Tip: Keep background noise low for better transcription."
     )
 
-# Main UI
+st.markdown("### Choose input")
+
+# Recording widget
+st.markdown("#### 🎙️ Record audio")
+recorded_audio = audio_recorder(text="Click to record / stop", pause_threshold=2.0)
+
+if recorded_audio:
+    st.success("Recorded audio captured.")
+    st.audio(recorded_audio, format="audio/wav")
+
+st.markdown("#### 📁 Or upload an audio file")
+
+# File upload
 audio_file = st.file_uploader(
     "Upload an audio file",
     type=["mp3", "wav", "m4a"],
     help="Record your meeting on your phone or laptop, then upload the file here.",
 )
 
-process_clicked = st.button("⚙️ Process meeting")
+process_clicked = st.button("⚙️ Process audio")
 
 if process_clicked:
-    if audio_file is None:
-        st.error("Please upload an audio file first.")
+    # Decide which source to use
+    file_bytes = None
+
+    if recorded_audio is not None:
+        # Prefer recorded audio if available
+        file_bytes = recorded_audio
+    elif audio_file is not None:
+        file_bytes = audio_file.read()
+
+    if file_bytes is None:
+        st.error("Please either record audio or upload an audio file before processing.")
     else:
         # Step 1: Transcription
         with st.spinner("Transcribing audio... This may take a moment."):
-            transcript = transcribe_audio(audio_file)
+            transcript = transcribe_audio(file_bytes)
 
         if not transcript:
             st.error("Something went wrong during transcription. Please try again.")
@@ -58,8 +80,8 @@ if process_clicked:
                 st.text_area("Transcript", transcript, height=300)
 
             # Step 2: Analysis / summarization
-            with st.spinner("Analyzing meeting..."):
-                result = analyze_transcript(transcript, meeting_type)
+            with st.spinner("Analyzing conversation..."):
+                result = analyze_transcript(transcript)
 
             st.success("✅ Analysis complete!")
 
@@ -100,7 +122,9 @@ if process_clicked:
                         if due:
                             meta.append(f"Due: **{due}**")
                         meta_str = " | ".join(meta)
-                        st.markdown(f"- {desc}" + (f"  \n  {meta_str}" if meta_str else ""))
+                        st.markdown(
+                            f"- {desc}" + (f"  \n  {meta_str}" if meta_str else "")
+                        )
                 else:
                     st.write("No action items detected.")
 
@@ -113,10 +137,9 @@ if process_clicked:
                     st.write("No open questions detected.")
 
             # Prepare export data
-            export_title = meeting_title or "Untitled meeting"
+            auto_title = f"Conversation {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             export_data = {
-                "title": export_title,
-                "meeting_type": meeting_type,
+                "title": auto_title,
                 "created_at": datetime.utcnow().isoformat() + "Z",
                 "transcript": transcript,
                 "summary_short": result.get("summary_short", ""),
@@ -131,20 +154,23 @@ if process_clicked:
             st.subheader("📥 Export")
             st.download_button(
                 label="💾 Download summary as JSON",
-                file_name=f"{export_title.replace(' ', '_')}_{datetime.now().date()}.json",
+                file_name=f"{auto_title.replace(' ', '_')}.json",
                 mime="application/json",
                 data=json.dumps(export_data, indent=2),
             )
 
-            # copyable text summary
+            # Copyable summary
             st.text_area(
                 "Copyable text summary",
-                value=f"{export_title}\n\nShort summary:\n{export_data['summary_short']}\n\n"
-                      f"Decisions:\n" + "\n".join(f"- {d}" for d in export_data["decisions"]) + "\n\n"
-                      f"Action items:\n" + "\n".join(
-                          f"- {ai.get('description', '')}" for ai in export_data["action_items"]
-                      ),
+                value=(
+                    f"{auto_title}\n\n"
+                    f"Short summary:\n{export_data['summary_short']}\n\n"
+                    f"Decisions:\n" + "\n".join(f"- {d}" for d in export_data["decisions"]) + "\n\n"
+                    f"Action items:\n" + "\n".join(
+                        f"- {ai.get('description', '')}" for ai in export_data["action_items"]
+                    )
+                ),
                 height=200,
             )
 else:
-    st.info("Upload an audio file and click **Process meeting** to get started.")
+    st.info("Record audio or upload a file, then click **Process audio** to get started.")
